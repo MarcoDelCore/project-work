@@ -54,6 +54,7 @@ class TreeGP:
             self.variables = [TreeGP.default_variable(i) for i in range(variables)]
         else:
             self.variables = list(variables)
+        print(self.variables)
 
         self.constants = constants
         self.seed = seed

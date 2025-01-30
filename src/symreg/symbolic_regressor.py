@@ -11,12 +11,13 @@ from joblib import Parallel, delayed
 
 class SymbolicRegressor:
     def __init__(self, 
-                 population_size=1000,
-                 generations=200,
+                 population_size=500,
+                 generations=1000,
                  tournament_size=100,
+                 randomness=0.3,
                  stopping_criteria=0.00001,
                  max_depth=7,
-                 parsimony_coefficient=0.01,
+                 parsimony_coefficient=0.001,
                  p_crossover=0.7,
                  p_subtree_mutation=0.1,
                  p_hoist_mutation=0.1,
@@ -26,6 +27,7 @@ class SymbolicRegressor:
         self.population_size = population_size
         self.generations = generations
         self.tournament_size = tournament_size
+        self.randomness = randomness
         self.stopping_criteria = stopping_criteria
         self.max_depth = max_depth
         self.parsimony_coefficient = parsimony_coefficient
@@ -55,16 +57,15 @@ class SymbolicRegressor:
                     return individual
                 except Exception:
                     continue  # If invalid, retry
-        self.treeGp = TreeGP(X.shape[1], 15)
         depths = list(range(2, self.max_depth + 1))
-        num_per_thread = self.population_size // n_threads
+        num_per_thread = self.population_size - len(self.population) // n_threads
 
         # Parallel execution
         new_population = Parallel(n_jobs=n_threads)(
-            delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size)
+            delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size - len(self.population))
         )
 
-        self.population = new_population
+        self.population.extend(new_population)
         return self.population
     
     def evaluate_fitness(self, X, y, generation):
@@ -80,15 +81,20 @@ class SymbolicRegressor:
         if self.population[0].mse < self.best_fitness:
             self.best_fitness = self.population[0].mse
             self.best_individual = self.population[0]
+            return True
+        else:
+            return False
+        
 
     def tournament_selection(self):
         """ Selects the best individuals for crossover & mutation """
-        self.population = sorted(random.sample(self.population, self.tournament_size), key=lambda x: x.mse)
+        sorted_population = sorted(self.population, key=lambda x: x.mse)
+        self.population = sorted_population[:self.tournament_size]
     
     def evolve_population(self, X, y):
         """ Applies crossover and mutation to generate new individuals """
         new_population = []
-        while len(new_population) < int(self.population_size * 0.6):
+        while len(new_population) < int((self.population_size - len(self.population))*(1-self.randomness)):
             r = random.random()
             if r < self.p_crossover:
                 parent1, parent2 = random.sample(self.population, 2)
@@ -111,15 +117,22 @@ class SymbolicRegressor:
                 pass  # Skip invalid individuals
 
         self.population.extend(new_population)
-        self.population = sorted(self.population, key=lambda x: x.mse)[:self.population_size]
+        self.population = sorted(self.population, key=lambda x: x.mse)
     
     def fit(self, X, y):
-        self.generate_population_parallel(X, y)
+        self.treeGp = TreeGP(X.shape[1], 15)
         stagnation_counter = 0
         
         for generation in range(self.generations):
             print(f"\nGeneration {generation + 1}")
-            self.evaluate_fitness(X, y, generation)
+            self.generate_population_parallel(X, y)
+
+
+            if self.evaluate_fitness(X, y, generation):
+                stagnation_counter = 0
+            else:
+                stagnation_counter += 1
+            print(f"Stagnation counter: {stagnation_counter}")
             
             print(f"Best MSE: {self.best_fitness}")
             print(f"Best Individual: {self.best_individual}")
@@ -128,21 +141,15 @@ class SymbolicRegressor:
                 print("Stopping criteria met. Training complete.")
                 break
             
+            self.tournament_selection()
+
             if stagnation_counter > 10 or (generation > 0 and generation % 10 == 0):
                 print("Stagnation detected. Applying mutations...")
-                num_to_mutate = int(self.population_size * 0.3)
-                for _ in range(num_to_mutate):
-                    parent = random.choice(self.population)
-                    mutated_child = self.point_mutation(parent)
-                    try:
-                        mse = compute_mse(mutated_child, X, y, max_samples=self.max_samples)
-                        mutated_child.set_mse(mse)
-                        self.population.append(mutated_child)
-                    except:
-                        pass
+                num_to_mutate = int(self.tournament_size * 0.3)
+                self.population = self.population[:num_to_mutate]
                 stagnation_counter = 0
+                print(f"Keep only {len(self.population)} individuals.")
             
-            self.tournament_selection()
             self.evolve_population(X, y)
         
         return self.best_individual
