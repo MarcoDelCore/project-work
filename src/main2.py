@@ -1,8 +1,8 @@
-from symreg.symbolic_regressor import SymbolicRegressor
-from symreg.symbolic_regressor import simplify
+from symreg.sym2 import SymbolicRegressor
+from symreg.sym2 import simplify
 import numpy as np
 
-problem = np.load("./data/problem_3.npz")
+problem = np.load("./data/problem_6.npz")
 X = problem["x"].T
 y = problem["y"]
 

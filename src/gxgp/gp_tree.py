@@ -29,7 +29,8 @@ class TreeGP:
             Operator("np.cos", np.cos, 1),
             Operator("np.tan", np.tan, 1),
             Operator("np.log", np.log, 1),
-            Operator("np.abs", np.abs, 1),
+        ]
+        """Operator("np.abs", np.abs, 1),
             Operator("np.negative", np.negative, 1),
             Operator("np.reciprocal", np.reciprocal, 1),
             Operator("np.square", np.square, 1),
@@ -47,7 +48,7 @@ class TreeGP:
             Operator("np.arctanh", np.arctanh, 1),
             Operator("np.maximum", np.maximum, 2),
             Operator("np.minimum", np.minimum, 2),
-        ]
+        ]"""
         
         self.operators = numpy_operators
         if isinstance(variables, int):
