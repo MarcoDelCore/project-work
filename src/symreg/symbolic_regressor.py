@@ -92,9 +92,10 @@ class SymbolicRegressor:
         self.population = sorted_population[:self.tournament_size]
     
     def evolve_population(self, X, y):
-        """ Applies crossover and mutation to generate new individuals """
-        new_population = []
-        while len(new_population) < int((self.population_size - len(self.population))*(1-self.randomness)):
+        """Applies crossover and mutation to generate new individuals in parallel."""
+        
+        def generate_individual():
+            """Generates a single new individual using crossover or mutation."""
             r = random.random()
             if r < self.p_crossover:
                 parent1, parent2 = random.sample(self.population, 2)
@@ -112,10 +113,20 @@ class SymbolicRegressor:
             try:
                 mse = compute_mse(child, X, y, max_samples=self.max_samples)
                 child.set_mse(mse)
-                new_population.append(child)
+                return child
             except:
-                pass  # Skip invalid individuals
+                return None  # Return None for invalid individuals
 
+        # Number of new individuals to generate
+        num_new_individuals = int((self.population_size - len(self.population)) * (1 - self.randomness))
+
+        # Parallel execution
+        new_population = Parallel(n_jobs=-1)(delayed(generate_individual)() for _ in range(num_new_individuals))
+
+        # Remove None values (invalid individuals)
+        new_population = [ind for ind in new_population if ind is not None]
+
+        # Update population
         self.population.extend(new_population)
         self.population = sorted(self.population, key=lambda x: x.mse)
     
@@ -151,6 +162,16 @@ class SymbolicRegressor:
                 print(f"Keep only {len(self.population)} individuals.")
             
             self.evolve_population(X, y)
+            if generation % 50 == 0 and generation > 0:
+                new_population = []
+                print("Simplifying population...")
+                for individual in self.population:
+                    mse = individual.mse
+                    individual = simplify(individual)
+                    individual.set_mse(mse)
+                    new_population.append(individual)
+                self.population = new_population
+                self.best_indiv = self.population[0]
         
         return self.best_individual
 

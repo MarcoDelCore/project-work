@@ -6,15 +6,14 @@ import numpy as np
 
 from gxgp.utils import arity
 
-
 class SymbolicRegressor():
     __population = []
     __fitness    = float('inf')
     __best_indiv = None
 
     def __init__(self, 
-                 population_size=1000,
-                 generations=200,
+                 population_size=500,
+                 generations=1000,
                  tournament_size=100,
                  stopping_criteria=0.00001,
                  max_depth=7,
@@ -136,6 +135,16 @@ class SymbolicRegressor():
             else:
                 print("Skipping crossover and mutation due to high MSE")
                 self.__population = []
+            if generation % 50 == 0 and generation > 0:
+                new_population = []
+                print("Simplifying population...")
+                for individual in self.__population:
+                    mse = individual.mse
+                    individual = simplify(individual)
+                    individual.set_mse(mse)
+                    new_population.append(individual)
+                self.__population = new_population
+                self.__best_indiv = self.__population[0]
 
         return self.__best_indiv
 

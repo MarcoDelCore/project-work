@@ -29,14 +29,14 @@ class TreeGP:
             Operator("np.cos", np.cos, 1),
             Operator("np.tan", np.tan, 1),
             Operator("np.log", np.log, 1),
-        ]
-        """Operator("np.abs", np.abs, 1),
+            Operator("np.abs", np.abs, 1),
             Operator("np.negative", np.negative, 1),
             Operator("np.reciprocal", np.reciprocal, 1),
             Operator("np.square", np.square, 1),
             Operator("np.cbrt", np.cbrt, 1),
             Operator("np.log1p", np.log1p, 1),
-            Operator("np.expm1", np.expm1, 1),
+        ]
+        """    Operator("np.expm1", np.expm1, 1),
             Operator("np.sinh", np.sinh, 1),
             Operator("np.cosh", np.cosh, 1),
             Operator("np.tanh", np.tanh, 1),
