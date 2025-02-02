@@ -57,9 +57,14 @@ class SymbolicRegressor:
         depths = list(range(2, self.max_depth + 1))
 
         # Parallel execution
-        new_population = Parallel(n_jobs=n_threads)(
-            delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
-        )
+        if len(self.population) == 0:
+            new_population = Parallel(n_jobs=n_threads)(
+                delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size)
+            )
+        else:
+            new_population = Parallel(n_jobs=n_threads)(
+                delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
+            )
 
         self.population.extend(new_population)
         return self.population
@@ -129,15 +134,17 @@ class SymbolicRegressor:
     def fit(self, X, y):
         self.treeGp = TreeGP(X.shape[1], 15)
         stagnation_counter = 0
-        
+
         for generation in range(self.generations):
             print(f"\nGeneration {generation + 1}")
             
             # 1. Genera nuovi individui casuali
             self.generate_population_parallel(X, y)
+            print(f"Population size: {len(self.population)}")
             
             # 2. Esegui crossover e mutazione
             self.evolve_population(X, y)
+            print(f"Population size: {len(self.population)}")
             
             # 3. Valuta la fitness della popolazione
             if self.evaluate_fitness(X, y, generation):
@@ -163,6 +170,7 @@ class SymbolicRegressor:
             
             # 6. Applica la selezione a torneo alla fine
             self.tournament_selection()
+            print(f"Population size: {len(self.population)}")
         
         return self.best_individual
 

@@ -72,8 +72,11 @@ class TreeGP:
                 constants = list(self.constants)
 
             if current_depth >= max_depth or (random.random() < 0.2 and current_depth > 1):
-                # Generate a leaf node (variable or constant)
-                leaf = random.choice(self.variables + constants)
+                r = random.random()
+                if r < 0.5:
+                    leaf = random.choice(self.variables)
+                else:
+                    leaf = random.choice(constants)
                 return Node(leaf, None)
 
             else:
