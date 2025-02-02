@@ -58,11 +58,11 @@ class SymbolicRegressor:
 
         # Parallel execution
         if len(self.population) == 0:
-            new_population = Parallel(n_jobs=n_threads)(
+            new_population = Parallel(n_jobs=1)(
                 delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size)
             )
         else:
-            new_population = Parallel(n_jobs=n_threads)(
+            new_population = Parallel(n_jobs=1)(
                 delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
             )
 
@@ -75,7 +75,7 @@ class SymbolicRegressor:
         def fitness(ind):
             return ind.mse + parsimony_coeff * ind.depth
         
-        fitness_results = Parallel(n_jobs=6)(delayed(fitness)(ind) for ind in self.population)
+        fitness_results = Parallel(n_jobs=1)(delayed(fitness)(ind) for ind in self.population)
         self.population = [ind for _, ind in sorted(zip(fitness_results, self.population), key=lambda x: x[0])]
         
         # Update best individual
@@ -122,7 +122,7 @@ class SymbolicRegressor:
         num_new_individuals = int((self.population_size - len(self.population)))
 
         # Parallel execution
-        new_population = Parallel(n_jobs=-1)(delayed(generate_individual)() for _ in range(num_new_individuals))
+        new_population = Parallel(n_jobs=1)(delayed(generate_individual)() for _ in range(num_new_individuals))
 
         # Remove None values (invalid individuals)
         new_population = [ind for ind in new_population if ind is not None]
@@ -140,11 +140,9 @@ class SymbolicRegressor:
             
             # 1. Genera nuovi individui casuali
             self.generate_population_parallel(X, y)
-            print(f"Population size: {len(self.population)}")
             
             # 2. Esegui crossover e mutazione
             self.evolve_population(X, y)
-            print(f"Population size: {len(self.population)}")
             
             # 3. Valuta la fitness della popolazione
             if self.evaluate_fitness(X, y, generation):
@@ -162,7 +160,7 @@ class SymbolicRegressor:
                 break
             
             # 5. Inietta casualità se necessario
-            if stagnation_counter > 10 or (generation > 0 and generation % 50 == 0):
+            if stagnation_counter == 10 or (generation > 0 and generation % 50 == 0):
                 print("Injecting randomness...")
                 num_to_mutate = int(self.tournament_size * 0.3)
                 self.population = self.population[:num_to_mutate]
@@ -170,7 +168,6 @@ class SymbolicRegressor:
             
             # 6. Applica la selezione a torneo alla fine
             self.tournament_selection()
-            print(f"Population size: {len(self.population)}")
         
         return self.best_individual
 
