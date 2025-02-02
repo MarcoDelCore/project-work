@@ -58,7 +58,7 @@ class SymbolicRegressor:
 
         # Parallel execution
         new_population = Parallel(n_jobs=n_threads)(
-            delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size - len(self.population))
+            delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
         )
 
         self.population.extend(new_population)
@@ -114,7 +114,7 @@ class SymbolicRegressor:
                 return None  # Return None for invalid individuals
 
         # Number of new individuals to generate
-        num_new_individuals = int((self.population_size - len(self.population)) * (1 - self.randomness))
+        num_new_individuals = int((self.population_size - len(self.population)))
 
         # Parallel execution
         new_population = Parallel(n_jobs=-1)(delayed(generate_individual)() for _ in range(num_new_individuals))
