@@ -55,7 +55,6 @@ class TreeGP:
             self.variables = [TreeGP.default_variable(i) for i in range(variables)]
         else:
             self.variables = list(variables)
-        print(self.variables)
 
         self.constants = constants
         self.seed = seed
@@ -73,12 +72,12 @@ class TreeGP:
                 constants = list(self.constants)
 
             if current_depth >= max_depth or (random.random() < 0.2 and current_depth > 1):
-                # Genera una foglia (variabile o costante)
+                # Generate a leaf node (variable or constant)
                 leaf = random.choice(self.variables + constants)
                 return Node(leaf, None)
 
             else:
-                # Genera un nodo interno (operatore)
+                # Generate an internal node (operator)
                 operator = random.choice(self.operators)
                 num_children = arity(operator)
 
@@ -89,6 +88,7 @@ class TreeGP:
                         children[0] = generate_subtree(current_depth + 1)  # Regenerate only first child
 
                 elif operator.name() == 'np.power':
+                    # Avoid negative base with non-integer exponent (to avoid complex numbers)
                     while (isinstance(children[0].short_name, numbers.Number) and float(children[0].short_name) < 0
                         and isinstance(children[1].short_name, numbers.Number) and not children[1].short_name.is_integer()):
                         children[0] = generate_subtree(current_depth + 1)  # Regenerate base
