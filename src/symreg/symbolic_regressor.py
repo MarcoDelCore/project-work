@@ -1,5 +1,6 @@
 from copy import deepcopy
 import random
+from typing import Collection
 from gxgp.gp_common import xover_swap_subtree
 from gxgp import TreeGP, Node
 import numpy as np
@@ -9,7 +10,8 @@ from joblib import Parallel, delayed
 
 
 class SymbolicRegressor:
-    def __init__(self, 
+    def __init__(self,
+                 operators: Collection, 
                  population_size=500,
                  generations=1000,
                  tournament_size=100,
@@ -35,48 +37,50 @@ class SymbolicRegressor:
         self.p_hoist_mutation = p_hoist_mutation
         self.p_point_mutation = p_point_mutation
         self.max_samples = max_samples
+        self.operators = operators
         
         self.population = []
         self.best_individual = None
         self.best_fitness = float('inf')
     
 
-    def generate_population_parallel(self, X, y, n_threads=4):
-        """Parallelized population generation"""
-        def generate_individual(depth_range, treeGp):
-            """Generate a single valid individual with its MSE"""
-            while True:
-                depth = random.choice(depth_range)
-                individual = treeGp.create_individual(depth)
-                try:
-                    mse = compute_mse(individual, X, y, max_samples=1.0)
-                    individual.set_mse(mse)
-                    return individual
-                except Exception:
-                    continue  # If invalid, retry
+    def generate_population(self, X, y):
+        """Generate a population of valid individuals."""
         depths = list(range(2, self.max_depth + 1))
-
-        # Parallel execution
+        
         if len(self.population) == 0:
-            new_population = Parallel(n_jobs=1)(
-                delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size)
-            )
+            print("Generating initial population...")
+            while len(self.population) < self.population_size:
+                depth = random.choice(depths)
+                individual = self.treeGp.create_individual(depth)
+                try:
+                    mse = compute_mse(individual, X, y, max_samples=self.max_samples)
+                    individual.set_mse(mse)
+                    self.population.append(individual)
+                except Exception as e:
+                    continue  # If invalid, retry
         else:
-            new_population = Parallel(n_jobs=1)(
-                delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
-            )
-
-        self.population.extend(new_population)
+            num_to_generate = int(self.population_size * self.randomness)
+            while len(self.population) < num_to_generate:
+                depth = random.choice(depths)
+                individual = self.treeGp.create_individual(depth)
+                try:
+                    mse = compute_mse(individual, X, y, max_samples=self.max_samples)
+                    individual.set_mse(mse)
+                    self.population.append(individual)
+                except Exception:
+                    continue
         return self.population
     
     def evaluate_fitness(self, X, y, generation):
-        """ Computes the fitness of individuals considering parsimony """
+        """Compute the fitness of individuals considering parsimony."""
         parsimony_coeff = self.parsimony_coefficient * (generation / self.generations)
-        def fitness(ind):
-            return ind.mse + parsimony_coeff * ind.depth
         
-        fitness_results = Parallel(n_jobs=1)(delayed(fitness)(ind) for ind in self.population)
-        self.population = [ind for _, ind in sorted(zip(fitness_results, self.population), key=lambda x: x[0])]
+        for individual in self.population:
+            individual.fitness = individual.mse + parsimony_coeff * individual.depth
+        
+        # Sort population by fitness
+        self.population.sort(key=lambda x: x.fitness)
         
         # Update best individual
         if self.population[0].mse < self.best_fitness:
@@ -93,10 +97,9 @@ class SymbolicRegressor:
         self.population = sorted_population[:self.tournament_size]
     
     def evolve_population(self, X, y):
-        """Applies crossover and mutation to generate new individuals in parallel."""
+        """Apply crossover and mutation to generate new individuals."""
         
-        def generate_individual():
-            """Generates a single new individual using crossover or mutation."""
+        while len(self.population) < self.population_size:
             r = random.random()
             if r < self.p_crossover:
                 parent1, parent2 = random.sample(self.population, 2)
@@ -114,37 +117,27 @@ class SymbolicRegressor:
             try:
                 mse = compute_mse(child, X, y, max_samples=self.max_samples)
                 child.set_mse(mse)
-                return child
-            except:
-                return None  # Return None for invalid individuals
-
-        # Number of new individuals to generate
-        num_new_individuals = int((self.population_size - len(self.population)))
-
-        # Parallel execution
-        new_population = Parallel(n_jobs=1)(delayed(generate_individual)() for _ in range(num_new_individuals))
-
-        # Remove None values (invalid individuals)
-        new_population = [ind for ind in new_population if ind is not None]
-
-        # Update population
-        self.population.extend(new_population)
-        self.population = sorted(self.population, key=lambda x: x.mse)
+                self.population.append(child)
+            except Exception:
+                continue  # Skip invalid individuals
     
     def fit(self, X, y):
-        self.treeGp = TreeGP(X.shape[1], 15)
+        self.treeGp = TreeGP(self.operators, X.shape[1], 15)
         stagnation_counter = 0
 
         for generation in range(self.generations):
             print(f"\nGeneration {generation + 1}")
             
-            # 1. Genera nuovi individui casuali
-            self.generate_population_parallel(X, y)
+            if stagnation_counter == 10 or (generation > 0 and generation % 50 == 0):
+                print("Injecting randomness...")
+                num_to_mutate = int(self.tournament_size * 0.3)
+                self.population = self.population[:num_to_mutate]
+                stagnation_counter = 0
             
-            # 2. Esegui crossover e mutazione
+            self.generate_population(X, y)
+            
             self.evolve_population(X, y)
             
-            # 3. Valuta la fitness della popolazione
             if self.evaluate_fitness(X, y, generation):
                 stagnation_counter = 0
             else:
@@ -154,19 +147,10 @@ class SymbolicRegressor:
             print(f"Best MSE: {self.best_fitness}")
             print(f"Best Individual: {self.best_individual}")
             
-            # 4. Controlla i criteri di arresto
             if self.best_fitness <= self.stopping_criteria:
                 print("Stopping criteria met. Training complete.")
                 break
             
-            # 5. Inietta casualità se necessario
-            if stagnation_counter == 10 or (generation > 0 and generation % 50 == 0):
-                print("Injecting randomness...")
-                num_to_mutate = int(self.tournament_size * 0.3)
-                self.population = self.population[:num_to_mutate]
-                stagnation_counter = 0
-            
-            # 6. Applica la selezione a torneo alla fine
             self.tournament_selection()
         
         return self.best_individual

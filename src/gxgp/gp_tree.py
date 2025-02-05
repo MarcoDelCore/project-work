@@ -15,42 +15,9 @@ from .utils import arity, Operator
 __all__ = ['TreeGP']
 
 class TreeGP:
-    def __init__(self, variables: int | Collection, constants: int | Collection, *, seed=42):
-
-        numpy_operators = [
-            Operator("np.add", np.add, 2),
-            Operator("np.subtract", np.subtract, 2),
-            Operator("np.multiply", np.multiply, 2),
-            Operator("np.divide", np.divide, 2),
-            Operator("np.power", np.power, 2),
-            Operator("np.exp", np.exp, 1),
-            Operator("np.sqrt", np.sqrt, 1),
-            Operator("np.sin", np.sin, 1),
-            Operator("np.cos", np.cos, 1),
-            Operator("np.tan", np.tan, 1),
-            Operator("np.log", np.log, 1),
-            Operator("np.abs", np.abs, 1),
-            Operator("np.negative", np.negative, 1),
-            Operator("np.reciprocal", np.reciprocal, 1),
-            Operator("np.square", np.square, 1),
-            Operator("np.cbrt", np.cbrt, 1),
-            Operator("np.log1p", np.log1p, 1),
-        ]
-        """    Operator("np.expm1", np.expm1, 1),
-            Operator("np.sinh", np.sinh, 1),
-            Operator("np.cosh", np.cosh, 1),
-            Operator("np.tanh", np.tanh, 1),
-            Operator("np.arcsin", np.arcsin, 1),
-            Operator("np.arccos", np.arccos, 1),
-            Operator("np.arctan", np.arctan, 1),
-            Operator("np.arcsinh", np.arcsinh, 1),
-            Operator("np.arccosh", np.arccosh, 1),
-            Operator("np.arctanh", np.arctanh, 1),
-            Operator("np.maximum", np.maximum, 2),
-            Operator("np.minimum", np.minimum, 2),
-        ]"""
+    def __init__(self, operators: Collection, variables: int | Collection, constants: int | Collection, *, seed=42):
         
-        self.operators = numpy_operators
+        self.operators = operators
         if isinstance(variables, int):
             self.variables = [TreeGP.default_variable(i) for i in range(variables)]
         else:
