@@ -1,7 +1,6 @@
 from copy import deepcopy
 import random
 from typing import Collection
-from gxgp.gp_common import xover_swap_subtree
 from gxgp import TreeGP, Node
 import numpy as np
 
@@ -45,42 +44,41 @@ class SymbolicRegressor:
     
 
     def generate_population(self, X, y):
-        """Generate a population of valid individuals."""
-        depths = list(range(2, self.max_depth + 1))
-        
-        if len(self.population) == 0:
-            print("Generating initial population...")
-            while len(self.population) < self.population_size:
-                depth = random.choice(depths)
-                individual = self.treeGp.create_individual(depth)
+        """Parallelized population generation"""
+        def generate_individual(depth_range, treeGp):
+            """Generate a single valid individual with its MSE"""
+            while True:
+                depth = random.choice(depth_range)
+                individual = treeGp.create_individual(depth)
                 try:
-                    mse = compute_mse(individual, X, y, max_samples=self.max_samples)
+                    mse = compute_mse(individual, X, y, max_samples=1.0)
                     individual.set_mse(mse)
-                    self.population.append(individual)
-                except Exception as e:
-                    continue  # If invalid, retry
-        else:
-            num_to_generate = int(self.population_size * self.randomness)
-            while len(self.population) < num_to_generate:
-                depth = random.choice(depths)
-                individual = self.treeGp.create_individual(depth)
-                try:
-                    mse = compute_mse(individual, X, y, max_samples=self.max_samples)
-                    individual.set_mse(mse)
-                    self.population.append(individual)
+                    return individual
                 except Exception:
-                    continue
+                    continue  # If invalid, retry
+        depths = list(range(2, self.max_depth + 1))
+
+        # Parallel execution
+        if len(self.population) == 0:
+            new_population = Parallel(n_jobs=4)(
+                delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size)
+            )
+        else:
+            new_population = Parallel(n_jobs=4)(
+                delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
+            )
+
+        self.population.extend(new_population)
         return self.population
     
-    def evaluate_fitness(self, X, y, generation):
-        """Compute the fitness of individuals considering parsimony."""
+    def evaluate_fitness(self, generation):
+        """ Computes the fitness of individuals considering parsimony """
         parsimony_coeff = self.parsimony_coefficient * (generation / self.generations)
+        def fitness(ind):
+            return ind.mse + parsimony_coeff * ind.depth
         
-        for individual in self.population:
-            individual.fitness = individual.mse + parsimony_coeff * individual.depth
-        
-        # Sort population by fitness
-        self.population.sort(key=lambda x: x.fitness)
+        fitness_results = Parallel(n_jobs=4)(delayed(fitness)(ind) for ind in self.population)
+        self.population = [ind for _, ind in sorted(zip(fitness_results, self.population), key=lambda x: x[0])]
         
         # Update best individual
         if self.population[0].mse < self.best_fitness:
@@ -92,18 +90,34 @@ class SymbolicRegressor:
         
 
     def tournament_selection(self):
-        """ Selects the best individuals for evolution """
-        sorted_population = sorted(self.population, key=lambda x: x.mse)
-        self.population = sorted_population[:self.tournament_size]
+        """Performs over-selection to enhance diversity while controlling takeover time."""        
+        # Define the split point for the two groups
+        x_percentage = 0.32  # 32% for population size = 1000
+        split_index = int(self.population_size * x_percentage)  # 320
+
+        # Define selection sizes
+        elite_count = int(self.tournament_size * 0.8)  # 80% from top individuals
+        diverse_count = self.tournament_size - elite_count  # 20% from the rest
+
+        # Select from the two groups
+        top_individuals = self.population[:split_index]  # Best x% (Group 1)
+        other_individuals = self.population[split_index:]  # Others (Group 2)
+
+        selected = random.sample(top_individuals, elite_count) + random.sample(other_individuals, diverse_count)
+
+        # Update population with selected individuals
+        self.population = selected
+
     
     def evolve_population(self, X, y):
-        """Apply crossover and mutation to generate new individuals."""
+        """Applies crossover and mutation to generate new individuals in parallel."""
         
-        while len(self.population) < self.population_size:
+        def generate_individual():
+            """Generates a single new individual using crossover or mutation."""
             r = random.random()
             if r < self.p_crossover:
                 parent1, parent2 = random.sample(self.population, 2)
-                child = xover_swap_subtree(parent1, parent2)
+                child = self.xover_swap_subtree(parent1, parent2)
             elif r < self.p_crossover + self.p_subtree_mutation:
                 parent = random.choice(self.population)
                 child = self.subtree_mutation(parent)
@@ -117,12 +131,24 @@ class SymbolicRegressor:
             try:
                 mse = compute_mse(child, X, y, max_samples=self.max_samples)
                 child.set_mse(mse)
-                self.population.append(child)
-            except Exception:
-                continue  # Skip invalid individuals
+                return child
+            except:
+                return None  # Return None for invalid individuals
+
+        # Number of new individuals to generate
+        num_new_individuals = int((self.population_size - len(self.population)))
+
+        # Parallel execution
+        new_population = Parallel(n_jobs=4)(delayed(generate_individual)() for _ in range(num_new_individuals))
+
+        # Remove None values (invalid individuals)
+        new_population = [ind for ind in new_population if ind is not None]
+
+        # Update population
+        self.population.extend(new_population)
     
     def fit(self, X, y):
-        self.treeGp = TreeGP(self.operators, X.shape[1], 15)
+        self.treeGp = TreeGP(self.operators, X.shape[0], 15)
         stagnation_counter = 0
 
         for generation in range(self.generations):
@@ -138,13 +164,13 @@ class SymbolicRegressor:
             
             self.evolve_population(X, y)
             
-            if self.evaluate_fitness(X, y, generation):
+            if self.evaluate_fitness(generation):
                 stagnation_counter = 0
             else:
                 stagnation_counter += 1
             print(f"Stagnation counter: {stagnation_counter}")
             
-            print(f"Best MSE: {self.best_fitness}")
+            print(f"Best MSE: {self.best_fitness:g}")
             print(f"Best Individual: {self.best_individual}")
             
             if self.best_fitness <= self.stopping_criteria:
@@ -154,6 +180,30 @@ class SymbolicRegressor:
             self.tournament_selection()
         
         return self.best_individual
+    
+    def xover_swap_subtree(self, tree1: Node, tree2: Node) -> Node:
+        """
+        Applies crossover by swapping subtrees between two trees to generate a new offspring.
+        
+        This operator helps combine the best features of both parents and explore new
+        regions of the search space.
+
+        Args:
+            tree1 (Node): The first parent tree.
+            tree2 (Node): The second parent tree.
+        
+        Returns:
+            Node: The offspring tree generated by swapping subtrees.
+        """
+        offspring = deepcopy(tree1)
+        successors = None
+        while not successors:
+            node = random.choice(list(offspring.subtree))
+            successors = node.successors
+        i = random.randrange(len(successors))
+        successors[i] = deepcopy(random.choice(list(tree2.subtree)))
+        node.successors = successors
+        return offspring
 
 
     def subtree_mutation(self, tree: Node) -> Node:
@@ -269,71 +319,39 @@ class SymbolicRegressor:
 
 
 def compute_mse(individual: Node, X, Y, max_samples=None):
-    """
-    Computes the Mean Squared Error (MSE) for a given individual (tree-based model) 
-    on the dataset (X, Y). The function evaluates the individual's predictions and 
-    penalizes invalid or extreme values to ensure stability.
-
-    Args:
-        individual (Node): The symbolic regression model (tree) to evaluate.
-        X (numpy.ndarray): Input features.
-        Y (numpy.ndarray): Target values.
-        max_samples (float, optional): A fraction (0 < max_samples <= 1) of data points 
-                                       to use for evaluation. If None, all data points are used.
-
-    Returns:
-        float: The computed MSE value. If the computation fails or results in an 
-               unstable value, a high penalty (1e20) is returned.
-    """
-
-    # Generate an array of indices corresponding to the dataset
-    indices = np.arange(len(X))
+    indices = np.arange(X.shape[1])  
     
-    # If max_samples is a fraction, randomly select a subset of the dataset
     if max_samples and max_samples < 1.0:
-        indices = np.random.choice(indices, int(len(X) * max_samples), replace=False)
+        indices = np.random.choice(indices, int(X.shape[1] * max_samples), replace=False)
     
-    # Extract the selected samples
-    X_batch = X[indices]
+    X_batch = X[:, indices]  
     Y_batch = Y[indices]
 
-    y_pred = []  # Stores predicted values
-
-    # Iterate over each sample in the batch
-    for row in X_batch:
-        # Create a dictionary mapping variable names (e.g., "x0", "x1", ...) to their values
-        variables = {f"x{i}": val for i, val in enumerate(row)}
-        
+    y_pred = []
+    for col in range(X_batch.shape[1]):  
+        variables = {f"x{i}": X_batch[i, col] for i in range(X_batch.shape[0])}
         try:
-            # Compute the predicted value using the tree model
             pred = individual(**variables)
-            
-            # Penalize non-numeric or extreme values to avoid instability
             if not np.isfinite(pred) or np.abs(pred) > 1e20:
-                pred = np.inf  # Assign a high penalty value for unstable models
-        
+                pred = np.inf
         except Exception as e:
-            raise e  # Re-raise exceptions for debugging
-        
+            raise e
         y_pred.append(pred)
 
-    y_pred = np.array(y_pred)  # Convert predictions to a NumPy array
+    y_pred = np.array(y_pred)
 
-    # Ensure all predictions are finite; replace NaN or infinite values with large penalties
     if not np.all(np.isfinite(y_pred)):
         y_pred = np.nan_to_num(y_pred, nan=np.inf, posinf=np.inf, neginf=-np.inf)
 
-    # Compute MSE with error handling
     try:
-        mse = np.square(Y_batch - y_pred).mean()
-        
-        # If MSE is not finite or is too large, assign a high penalty value
+        mse = 100 * np.square(Y_batch - y_pred).mean()
         if not np.isfinite(mse) or mse > 1e20:
             mse = 1e20  
     except Exception:
-        mse = 1e20  # Assign penalty in case of computational errors
+        mse = 1e20
 
-    return mse  # Return the computed or penalized MSE
+    return mse
+
 
 
 def simplify(node: Node) -> Node:

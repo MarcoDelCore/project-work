@@ -3,7 +3,7 @@ from symreg.symbolic_regressor import SymbolicRegressor
 from symreg.symbolic_regressor import simplify
 import numpy as np
 
-n = 6
+n = 2
 numpy_operators = [
             Operator("np.add", np.add, 2),
             Operator("np.subtract", np.subtract, 2),
@@ -36,12 +36,15 @@ numpy_operators = [
             Operator("np.minimum", np.minimum, 2),
         ]
 
-problem = np.load(f"./data/problem_{6}.npz")
-X = problem["x"].T
+problem = np.load(f"./data/problem_{n}.npz")
+X = problem["x"]
 y = problem["y"]
 
 print(f"Solving problem {n}...")
+print(f"X shape: {X.shape}")
 
-sr = SymbolicRegressor(operators=numpy_operators, population_size=20, tournament_size=8, stopping_criteria=0.0001, randomness=0.6)
+sr = SymbolicRegressor(operators=numpy_operators, population_size=20, tournament_size=8, generations=50, stopping_criteria=0)
 res = sr.fit(X, y)
-print(simplify(res))
+print()
+print("Training complete.")
+print(f"Besto solution: {simplify(res)}")

@@ -1,11 +1,3 @@
-#   *        Giovanni Squillero's GP Toolbox
-#  / \       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# 2   +      A no-nonsense GP in pure Python
-#    / \
-#  10   11   Distributed under MIT License
-
-import inspect
-from typing import Callable
 import warnings
 
 __all__ = ['arity']

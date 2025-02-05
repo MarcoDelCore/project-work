@@ -1,13 +1,5 @@
-#   *        Giovanni Squillero's GP Toolbox
-#  / \       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# 2   +      A no-nonsense GP in pure Python
-#    / \
-#  10   11   Distributed under MIT License
-
-import numbers
 import random
 from typing import Collection
-import numpy as np
 
 from .node import Node
 from .utils import arity, Operator
@@ -31,47 +23,38 @@ class TreeGP:
         return f'x{i}'
 
     def create_individual(self, max_depth=3):
-        def generate_subtree(current_depth):
-            constants = []
-            if isinstance(self.constants, int):
-                constants = [random.uniform(-1, 1) for _ in range(self.constants)]
-            else:
-                constants = list(self.constants)
+        constants = [random.uniform(-1, 1) for _ in range(self.constants)] if isinstance(self.constants, int) else list(self.constants)
 
-            if current_depth >= max_depth or (random.random() < 0.2 and current_depth > 1):
-                r = random.random()
-                if r < 0.5:
-                    leaf = random.choice(self.variables)
-                else:
-                    leaf = random.choice(constants)
-                return Node(leaf, None)
+        stack = [] 
+        root = None 
+
+        # Stack format: (depth, parent_node, child_index)
+        stack.append((0, None, None))
+
+        while stack:
+            depth, parent, child_index = stack.pop()
+
+            if depth >= max_depth or (random.random() < 0.2 and depth > 1):
+                leaf = random.choice(self.variables + constants)
+                node = Node(leaf, None)
 
             else:
-                # Generate an internal node (operator)
                 operator = random.choice(self.operators)
                 num_children = arity(operator)
+                children = [Node(0)] * num_children # Placeholder for children
 
-                children = [generate_subtree(current_depth + 1) for _ in range(num_children)]
+                node = Node(operator, children)
 
-                if operator.name() == 'np.sqrt':
-                    while (isinstance(children[0].short_name, numbers.Number) and float(children[0].short_name) < 0):
-                        children[0] = generate_subtree(current_depth + 1)  # Regenerate only first child
+                for i in range(num_children - 1, -1, -1): 
+                    stack.append((depth + 1, node, i))
 
-                elif operator.name() == 'np.power':
-                    # Avoid negative base with non-integer exponent (to avoid complex numbers)
-                    while (isinstance(children[0].short_name, numbers.Number) and float(children[0].short_name) < 0
-                        and isinstance(children[1].short_name, numbers.Number) and not children[1].short_name.is_integer()):
-                        children[0] = generate_subtree(current_depth + 1)  # Regenerate base
-                        children[1] = generate_subtree(current_depth + 1)  # Regenerate exponent
+            if parent is not None and child_index is not None:
+                parent._successors[child_index] = node
+            else:
+                root = node 
 
-                elif operator.name() == 'np.divide':
-                    while (isinstance(children[1].short_name, numbers.Number) and float(children[1].short_name) == 0):
-                        children[1] = generate_subtree(current_depth + 1)  # Regenerate denominator
+        return root
 
-                return Node(operator, children)
-
-        return generate_subtree(0)
-    
 
     def random_operator(self) -> Operator:
         return random.choice(self.operators)
