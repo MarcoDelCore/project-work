@@ -138,14 +138,14 @@ class SymbolicRegressor:
         # Number of new individuals to generate
         num_new_individuals = int((self.population_size - len(self.population)))
 
-        # Parallel execution
-        new_population = Parallel(n_jobs=4)(delayed(generate_individual)() for _ in range(num_new_individuals))
-
-        # Remove None values (invalid individuals)
-        new_population = [ind for ind in new_population if ind is not None]
+        new_individuals = []
+        while len(new_individuals) < num_new_individuals:
+            new_individual = generate_individual()
+            if new_individual:
+                new_individuals.append(new_individual)
 
         # Update population
-        self.population.extend(new_population)
+        self.population.extend(new_individuals)
     
     def fit(self, X, y):
         self.treeGp = TreeGP(self.operators, X.shape[0], 15)

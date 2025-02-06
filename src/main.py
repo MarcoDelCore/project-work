@@ -43,7 +43,7 @@ y = problem["y"]
 print(f"Solving problem {n}...")
 print(f"X shape: {X.shape}")
 
-sr = SymbolicRegressor(operators=numpy_operators, population_size=20, tournament_size=8, generations=50, stopping_criteria=0)
+sr = SymbolicRegressor(operators=numpy_operators, population_size=200, tournament_size=30, generations=10, stopping_criteria=0)
 res = sr.fit(X, y)
 print()
 print("Training complete.")
