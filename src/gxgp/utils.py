@@ -3,8 +3,7 @@ import warnings
 __all__ = ['arity']
 
 class Operator:
-    def __init__(self, symbol, function, in_params):
-        self.symbol = symbol
+    def __init__(self, function, in_params):
         self.function = function
         self.arity = in_params 
         
@@ -14,18 +13,6 @@ class Operator:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return self.function(*args)
-    
-    def name(self):
-        return self.symbol
-
-    def __name__(self):
-        return self.symbol
-
-    def __str__(self):
-        return self.symbol
-
-    def __repr__(self):
-        return self.symbol
 
 def arity(op: Operator) -> int:
     """Return the number of expected parameter of the function"""

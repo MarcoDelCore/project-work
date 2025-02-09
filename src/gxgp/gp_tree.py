@@ -7,7 +7,7 @@ from .utils import arity, Operator
 __all__ = ['TreeGP']
 
 class TreeGP:
-    def __init__(self, operators: Collection, variables: int | Collection, constants: int | Collection, *, seed=42):
+    def __init__(self, operators: dict[str, Operator], variables: int | Collection, constants: int | Collection, *, seed=42):
         
         self.operators = operators
         if isinstance(variables, int):
@@ -34,16 +34,17 @@ class TreeGP:
         while stack:
             depth, parent, child_index = stack.pop()
 
-            if depth >= max_depth or (random.random() < 0.2 and depth > 1):
+            if depth >= max_depth:
                 leaf = random.choice(self.variables + constants)
                 node = Node(leaf, None)
 
             else:
-                operator = random.choice(self.operators)
+                operator_name = random.choice(list(self.operators.keys()))
+                operator = self.operators[operator_name]
                 num_children = arity(operator)
                 children = [Node(0)] * num_children # Placeholder for children
 
-                node = Node(operator, children)
+                node = Node(operator, children, name=operator_name)
 
                 for i in range(num_children - 1, -1, -1): 
                     stack.append((depth + 1, node, i))
@@ -57,7 +58,8 @@ class TreeGP:
 
 
     def random_operator(self) -> Operator:
-        return random.choice(self.operators)
+        operator_name = random.choice(list(self.operators.keys()))
+        return self.operators[operator_name]
     
     def random_terminal(self) -> str:
         constants = []

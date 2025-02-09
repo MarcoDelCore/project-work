@@ -28,7 +28,7 @@ class Node:
             assert all(isinstance(s, Node) for s in successors), "Panic: Successors must be `Node`"
             self._successors = list(successors)
             if name is not None:
-                self._str = node
+                self._str = name
             else:
                 self._str = node
         elif isinstance(node, numbers.Number):

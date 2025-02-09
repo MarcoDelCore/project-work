@@ -4,13 +4,13 @@ from typing import Collection
 from gxgp import TreeGP, Node
 import numpy as np
 
-from gxgp.utils import arity
+from gxgp.utils import Operator, arity
 from joblib import Parallel, delayed
 
 
 class SymbolicRegressor:
     def __init__(self,
-                 operators: Collection, 
+                 operators: dict[str, Operator],
                  population_size=500,
                  generations=1000,
                  tournament_size=100,
@@ -44,6 +44,7 @@ class SymbolicRegressor:
     
 
     def generate_population(self, X, y):
+        self.treeGp = TreeGP(self.operators, X.shape[0], 15)
         """Parallelized population generation"""
         def generate_individual(depth_range, treeGp):
             """Generate a single valid individual with its MSE"""
@@ -65,7 +66,7 @@ class SymbolicRegressor:
             )
         else:
             new_population = Parallel(n_jobs=4)(
-                delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size*self.randomness - len(self.population)))
+                delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size - len(self.population)))
             )
 
         self.population.extend(new_population)
@@ -92,7 +93,7 @@ class SymbolicRegressor:
     def tournament_selection(self):
         """Performs over-selection to enhance diversity while controlling takeover time."""        
         # Define the split point for the two groups
-        x_percentage = 0.32  # 32% for population size = 1000
+        """x_percentage = 0.32  # 32% for population size = 1000
         split_index = int(self.population_size * x_percentage)  # 320
 
         # Define selection sizes
@@ -106,50 +107,52 @@ class SymbolicRegressor:
         selected = random.sample(top_individuals, elite_count) + random.sample(other_individuals, diverse_count)
 
         # Update population with selected individuals
-        self.population = selected
+        self.population = selected"""
+        self.population = self.population[:self.tournament_size]
 
     
     def evolve_population(self, X, y):
-        """Applies crossover and mutation to generate new individuals in parallel."""
+        """Applies crossover and mutation to generate new individuals."""
         
         def generate_individual():
             """Generates a single new individual using crossover or mutation."""
-            r = random.random()
-            if r < self.p_crossover:
-                parent1, parent2 = random.sample(self.population, 2)
-                child = self.xover_swap_subtree(parent1, parent2)
-            elif r < self.p_crossover + self.p_subtree_mutation:
-                parent = random.choice(self.population)
-                child = self.subtree_mutation(parent)
-            elif r < self.p_crossover + self.p_subtree_mutation + self.p_hoist_mutation:
-                parent = random.choice(self.population)
-                child = self.hoist_mutation(parent)
-            else:
-                parent = random.choice(self.population)
-                child = self.point_mutation(parent)
-            
-            try:
-                mse = compute_mse(child, X, y, max_samples=self.max_samples)
-                child.set_mse(mse)
-                return child
-            except:
-                return None  # Return None for invalid individuals
+            while True:
+                r = random.random()
+                if r < self.p_crossover:
+                    parent1, parent2 = random.sample(self.population, 2)
+                    child = self.xover_swap_subtree(parent1, parent2)
+                elif r < self.p_crossover + self.p_subtree_mutation:
+                    parent = random.choice(self.population)
+                    child = self.subtree_mutation(parent)
+                elif r < self.p_crossover + self.p_subtree_mutation + self.p_hoist_mutation:
+                    parent = random.choice(self.population)
+                    child = self.hoist_mutation(parent)
+                else:
+                    parent = random.choice(self.population)
+                    child = self.point_mutation(parent)
+                
+                try:
+                    mse = compute_mse(child, X, y, max_samples=self.max_samples)
+                    child.set_mse(mse)
+                    return child
+                except:
+                    continue 
 
         # Number of new individuals to generate
-        num_new_individuals = int((self.population_size - len(self.population)))
+        if len(self.population) < self.population_size:
+            num_new_individuals = int((self.population_size*(1-self.randomness)))
 
-        new_individuals = []
-        while len(new_individuals) < num_new_individuals:
-            new_individual = generate_individual()
-            if new_individual:
-                new_individuals.append(new_individual)
+            new_population = Parallel(n_jobs=4)(
+                delayed(generate_individual)() for _ in range(num_new_individuals)
+            )
 
-        # Update population
-        self.population.extend(new_individuals)
+            # Update population
+            self.population.extend(new_population)
     
     def fit(self, X, y):
         self.treeGp = TreeGP(self.operators, X.shape[0], 15)
         stagnation_counter = 0
+        self.generate_population(X, y)
 
         for generation in range(self.generations):
             print(f"\nGeneration {generation + 1}")
@@ -159,10 +162,10 @@ class SymbolicRegressor:
                 num_to_mutate = int(self.tournament_size * 0.3)
                 self.population = self.population[:num_to_mutate]
                 stagnation_counter = 0
-            
-            self.generate_population(X, y)
-            
+                        
             self.evolve_population(X, y)
+
+            self.generate_population(X, y)
             
             if self.evaluate_fitness(generation):
                 stagnation_counter = 0
@@ -195,13 +198,13 @@ class SymbolicRegressor:
         Returns:
             Node: The offspring tree generated by swapping subtrees.
         """
-        offspring = deepcopy(tree1)
+        offspring = self.deepcopy_tree(tree1)
         successors = None
         while not successors:
             node = random.choice(list(offspring.subtree))
             successors = node.successors
         i = random.randrange(len(successors))
-        successors[i] = deepcopy(random.choice(list(tree2.subtree)))
+        successors[i] = self.deepcopy_tree(random.choice(list(tree2.subtree)))
         node.successors = successors
         return offspring
 
@@ -222,7 +225,7 @@ class SymbolicRegressor:
         """
 
         # Create a deep copy of the tree to avoid modifying the original tree
-        offspring = deepcopy(tree)
+        offspring = self.deepcopy_tree(tree)
 
         successors = None
         # Randomly select a node with at least one child (i.e., non-leaf node)
@@ -256,7 +259,7 @@ class SymbolicRegressor:
         Returns:
             Node: A new tree with the hoist mutation applied.
         """
-        offspring = deepcopy(tree)
+        offspring = self.deepcopy_tree(tree)
 
         successors = offspring.successors
         i = random.randrange(len(successors))
@@ -265,7 +268,7 @@ class SymbolicRegressor:
             return offspring
         else:
             j = random.randrange(len(node.successors))
-            new_node = deepcopy(node.successors[j])
+            new_node = self.deepcopy_tree(node.successors[j])
             successors[i] = new_node
             offspring.successors = successors
         return offspring
@@ -288,7 +291,7 @@ class SymbolicRegressor:
         """
 
         # Create a deep copy of the tree to avoid modifying the original tree
-        offspring = deepcopy(tree_node)
+        offspring = self.deepcopy_tree(tree_node)
 
         successors = None
         # Randomly select a node that has at least one child (i.e., non-leaf node)
@@ -312,10 +315,132 @@ class SymbolicRegressor:
             new_node = Node(new_op, node_to_mutate.successors)
 
         # Replace the selected node with the mutated node
-        successors[i] = deepcopy(new_node)
+        successors[i] = self.deepcopy_tree(new_node)
         node.successors = successors  # Update the node's children
 
         return offspring
+    
+
+    def deepcopy_tree(self, tree: Node) -> Node:
+        """
+        Deep copy a tree structure in a iterative way.
+        """
+        stack = [(tree, None, None)]
+        new_root = None
+
+        while stack:
+            node, parent, index = stack.pop()
+            if parent is not None:
+                parent.successors[index] = node
+            else:
+                new_root = node
+
+            for i, child in enumerate(reversed(node.successors)):
+                stack.append((child, node, i))
+
+        return new_root
+    
+
+    def simplify(self, node: Node) -> Node:
+        """
+        Simplifies a given expression tree by evaluating constant expressions 
+        and applying algebraic simplifications.
+
+        This function recursively simplifies nodes, reducing redundancy and 
+        improving readability of the final expression.
+
+        Args:
+            node (Node): The root node of the expression tree.
+
+        Returns:
+            Node: The simplified tree.
+        """
+
+        # If the node is a leaf (constant or variable), return it as is
+        if node.is_leaf:
+            return node
+
+        # Recursively simplify the successors (child nodes)
+        simplified_successors = [self.simplify(child) for child in node.successors]
+
+        # Attempt to evaluate constant expressions
+        try:
+            # Convert child nodes to numeric values
+            values = [float(child.short_name) for child in simplified_successors]
+            
+            # Clip values to prevent overflow/underflow
+            clamped_values = [np.clip(val, -1e300, 1e300) for val in values]
+
+            # Handle special cases of mathematical operations
+            if node.short_name == 'np.sqrt' and clamped_values[0] < 0:
+                print(f"Error: Attempted sqrt({clamped_values[0]}), which is invalid.")
+                return Node(node='NaN')  # Return NaN for invalid sqrt
+            
+            if node.short_name == 'np.power' and clamped_values[0] < 0 and not float(clamped_values[1]).is_integer():
+                print(f"Error: Attempted power({clamped_values[0]}, {clamped_values[1]}), which results in a complex number.")
+                return Node(node='NaN')  # Return NaN for invalid power operations
+            
+            if node.short_name == 'np.divide' and clamped_values[1] == 0:
+                print(f"Error: Attempted divide({clamped_values[0]}, 0), which is invalid.")
+                return Node(node='inf')  # Return infinity for division by zero
+
+            # Evaluate the operation if it's a known function
+            result = node._func(*clamped_values) if node._func else None
+
+            # If the result is finite, replace the node with a constant
+            if result is not None and np.isfinite(result):
+                return Node(node=result)
+
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass  # Ignore errors and continue with algebraic simplifications
+
+        # Apply algebraic simplifications
+        if node.short_name == 'np.add':
+            # x + 0 -> x
+            simplified_successors = [child for child in simplified_successors if child.short_name != '0']
+            if not simplified_successors:
+                return Node(node=0)
+            if len(simplified_successors) == 1:
+                return simplified_successors[0]
+
+        elif node.short_name == 'np.multiply':
+            # x * 1 -> x, x * 0 -> 0
+            if any(child.short_name == '0' for child in simplified_successors):
+                return Node(node=0)  # If multiplying by 0, result is 0
+            simplified_successors = [child for child in simplified_successors if child.short_name != '1']
+            if len(simplified_successors) == 1:
+                return simplified_successors[0]
+
+        elif node.short_name == 'np.subtract':
+            # x - 0 -> x
+            if len(simplified_successors) == 2 and simplified_successors[1].short_name == '0':
+                return simplified_successors[0]
+            # x - x -> 0
+            if len(simplified_successors) == 2 and simplified_successors[0].short_name == simplified_successors[1].short_name:
+                return Node(node=0)
+
+        elif node.short_name == 'np.divide':
+            # x / 1 -> x
+            if len(simplified_successors) == 2 and simplified_successors[1].short_name == '1':
+                return simplified_successors[0]
+            # x / 0 -> 'inf'
+            if len(simplified_successors) == 2 and simplified_successors[1].short_name == '0':
+                return Node(node='inf')  # Handle division by zero
+
+        elif node.short_name == 'np.power':
+            base, exp = simplified_successors
+            # x ** 0 -> 1
+            if exp.short_name == '0':
+                return Node(node=1)
+            # x ** 1 -> x
+            if exp.short_name == '1':
+                return base
+            # 0 ** x -> 0 (for x > 0)
+            if base.short_name == '0' and float(exp.short_name) > 0:
+                return Node(node=0)
+
+        # If no simplifications applied, return a new node with simplified successors
+        return Node(node=self.operators[node.short_name], successors=simplified_successors, name=node.short_name)
 
 
 def compute_mse(individual: Node, X, Y, max_samples=None):
@@ -352,105 +477,3 @@ def compute_mse(individual: Node, X, Y, max_samples=None):
 
     return mse
 
-
-
-def simplify(node: Node) -> Node:
-    """
-    Simplifies a given expression tree by evaluating constant expressions 
-    and applying algebraic simplifications.
-
-    This function recursively simplifies nodes, reducing redundancy and 
-    improving readability of the final expression.
-
-    Args:
-        node (Node): The root node of the expression tree.
-
-    Returns:
-        Node: The simplified tree.
-    """
-
-    # If the node is a leaf (constant or variable), return it as is
-    if node.is_leaf:
-        return node
-
-    # Recursively simplify the successors (child nodes)
-    simplified_successors = [simplify(child) for child in node.successors]
-
-    # Attempt to evaluate constant expressions
-    try:
-        # Convert child nodes to numeric values
-        values = [float(child.short_name) for child in simplified_successors]
-        
-        # Clip values to prevent overflow/underflow
-        clamped_values = [np.clip(val, -1e300, 1e300) for val in values]
-
-        # Handle special cases of mathematical operations
-        if node.short_name == 'np.sqrt' and clamped_values[0] < 0:
-            print(f"Error: Attempted sqrt({clamped_values[0]}), which is invalid.")
-            return Node(node='NaN')  # Return NaN for invalid sqrt
-        
-        if node.short_name == 'np.power' and clamped_values[0] < 0 and not float(clamped_values[1]).is_integer():
-            print(f"Error: Attempted power({clamped_values[0]}, {clamped_values[1]}), which results in a complex number.")
-            return Node(node='NaN')  # Return NaN for invalid power operations
-        
-        if node.short_name == 'np.divide' and clamped_values[1] == 0:
-            print(f"Error: Attempted divide({clamped_values[0]}, 0), which is invalid.")
-            return Node(node='inf')  # Return infinity for division by zero
-
-        # Evaluate the operation if it's a known function
-        result = node._func(*clamped_values) if node._func else None
-
-        # If the result is finite, replace the node with a constant
-        if result is not None and np.isfinite(result):
-            return Node(node=result)
-
-    except (ValueError, TypeError, ZeroDivisionError):
-        pass  # Ignore errors and continue with algebraic simplifications
-
-    # Apply algebraic simplifications
-    if node.short_name == 'np.add':
-        # x + 0 -> x
-        simplified_successors = [child for child in simplified_successors if child.short_name != '0']
-        if not simplified_successors:
-            return Node(node=0)
-        if len(simplified_successors) == 1:
-            return simplified_successors[0]
-
-    elif node.short_name == 'np.multiply':
-        # x * 1 -> x, x * 0 -> 0
-        if any(child.short_name == '0' for child in simplified_successors):
-            return Node(node=0)  # If multiplying by 0, result is 0
-        simplified_successors = [child for child in simplified_successors if child.short_name != '1']
-        if len(simplified_successors) == 1:
-            return simplified_successors[0]
-
-    elif node.short_name == 'np.subtract':
-        # x - 0 -> x
-        if len(simplified_successors) == 2 and simplified_successors[1].short_name == '0':
-            return simplified_successors[0]
-        # x - x -> 0
-        if len(simplified_successors) == 2 and simplified_successors[0].short_name == simplified_successors[1].short_name:
-            return Node(node=0)
-
-    elif node.short_name == 'np.divide':
-        # x / 1 -> x
-        if len(simplified_successors) == 2 and simplified_successors[1].short_name == '1':
-            return simplified_successors[0]
-        # x / 0 -> 'inf'
-        if len(simplified_successors) == 2 and simplified_successors[1].short_name == '0':
-            return Node(node='inf')  # Handle division by zero
-
-    elif node.short_name == 'np.power':
-        base, exp = simplified_successors
-        # x ** 0 -> 1
-        if exp.short_name == '0':
-            return Node(node=1)
-        # x ** 1 -> x
-        if exp.short_name == '1':
-            return base
-        # 0 ** x -> 0 (for x > 0)
-        if base.short_name == '0' and float(exp.short_name) > 0:
-            return Node(node=0)
-
-    # If no simplifications applied, return a new node with simplified successors
-    return Node(node=node.short_name, successors=simplified_successors)
