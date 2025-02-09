@@ -61,11 +61,11 @@ class SymbolicRegressor:
 
         # Parallel execution
         if len(self.population) == 0:
-            new_population = Parallel(n_jobs=4)(
+            new_population = Parallel(n_jobs=-1)(
                 delayed(generate_individual)(depths, self.treeGp) for _ in range(self.population_size)
             )
         else:
-            new_population = Parallel(n_jobs=4)(
+            new_population = Parallel(n_jobs=-1)(
                 delayed(generate_individual)(depths, self.treeGp) for _ in range(int(self.population_size - len(self.population)))
             )
 
@@ -78,7 +78,7 @@ class SymbolicRegressor:
         def fitness(ind):
             return ind.mse + parsimony_coeff * ind.depth
         
-        fitness_results = Parallel(n_jobs=4)(delayed(fitness)(ind) for ind in self.population)
+        fitness_results = Parallel(n_jobs=-1)(delayed(fitness)(ind) for ind in self.population)
         self.population = [ind for _, ind in sorted(zip(fitness_results, self.population), key=lambda x: x[0])]
         
         # Update best individual
@@ -142,7 +142,7 @@ class SymbolicRegressor:
         if len(self.population) < self.population_size:
             num_new_individuals = int((self.population_size*(1-self.randomness)))
 
-            new_population = Parallel(n_jobs=4)(
+            new_population = Parallel(n_jobs=-1)(
                 delayed(generate_individual)() for _ in range(num_new_individuals)
             )
 
@@ -492,8 +492,9 @@ def compute_mse(individual: Node, X, Y, max_samples=None):
         mse = 100 * np.square(Y_batch - y_pred).mean()
         if not np.isfinite(mse) or mse > 1e20:
             mse = 1e20  
-    except Exception:
-        mse = 1e20
+        return mse
+    except Exception as e:
+        raise e
 
-    return mse
+   
 
