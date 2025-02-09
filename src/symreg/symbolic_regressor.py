@@ -311,8 +311,8 @@ class SymbolicRegressor:
             # If it's an operator node, replace it with another operator of the same arity
             new_op = None
             while new_op is None or arity(new_op) != node_to_mutate.arity:
-                new_op = self.treeGp.random_operator()
-            new_node = Node(new_op, node_to_mutate.successors)
+                new_op, op_name = self.treeGp.random_operator()
+            new_node = Node(new_op, node_to_mutate.successors, name=op_name)
 
         # Replace the selected node with the mutated node
         successors[i] = self.deepcopy_tree(new_node)
@@ -323,22 +323,42 @@ class SymbolicRegressor:
 
     def deepcopy_tree(self, tree: Node) -> Node:
         """
-        Deep copy a tree structure in a iterative way.
+        Deep copy a tree structure in an iterative way, rebuilding it during the backward pass.
         """
-        stack = [(tree, None, None)]
-        new_root = None
+        if tree is None:
+            return None
+
+        stack = [(tree, None, None)]  # (current node, parent copy, child index)
+        node_map = {}  # Maps original nodes to their copies
 
         while stack:
             node, parent, index = stack.pop()
-            if parent is not None:
-                parent.successors[index] = node
+            
+            # Copy the current node
+            new_node_name = node.short_name
+            if new_node_name in self.operators:
+                new_node = Node(self.operators[new_node_name], successors=[Node('temp')] * len(node.successors), name=new_node_name)
             else:
-                new_root = node
-
+                try:
+                    new_num = float(new_node_name)
+                    new_node = Node(new_num, successors=None)
+                except ValueError:
+                    new_node = Node(new_node_name, successors=None)
+            
+            # Store the copy in the map
+            node_map[node] = new_node
+            
+            # If this node has a parent, assign it in the correct position
+            if parent is not None:
+                successors = parent.successors
+                successors[index] = new_node
+                parent.successors = successors
+            
+            # Push children onto the stack for processing later
             for i, child in enumerate(reversed(node.successors)):
-                stack.append((child, node, i))
-
-        return new_root
+                stack.append((child, new_node, len(node.successors) - 1 - i))
+        
+        return node_map[tree]
     
 
     def simplify(self, node: Node) -> Node:

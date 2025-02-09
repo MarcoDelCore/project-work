@@ -22,7 +22,7 @@ class Node:
             self._arity = arity(node)
             assert self._arity is None or len(list(successors)) == self._arity, (
                 "Panic: Incorrect number of children."
-                + f" Expected {len(tuple(successors))} found {arity(node)}"
+                + f" Expected {len(list(successors))} found {arity(node)}"
             )
             self._leaf = False
             assert all(isinstance(s, Node) for s in successors), "Panic: Successors must be `Node`"
@@ -91,7 +91,7 @@ class Node:
 
     @successors.setter
     def successors(self, new_successors):
-        self._successors = tuple(new_successors)
+        self._successors = list(new_successors)
 
     @property
     def is_leaf(self):

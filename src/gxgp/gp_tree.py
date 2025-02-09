@@ -59,7 +59,7 @@ class TreeGP:
 
     def random_operator(self) -> Operator:
         operator_name = random.choice(list(self.operators.keys()))
-        return self.operators[operator_name]
+        return self.operators[operator_name], operator_name
     
     def random_terminal(self) -> str:
         constants = []
