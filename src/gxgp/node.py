@@ -147,12 +147,6 @@ class Node:
 
         return max_depth
 
-    def is_operator(self) -> bool:
-        return isinstance(self.short_name, Operator)
-
-    def is_terminal(self) -> bool:
-        return self.is_leaf
-
     def set_mse(self, mse: float):
         self._mse = mse
 

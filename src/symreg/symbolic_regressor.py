@@ -1,6 +1,4 @@
-from copy import deepcopy
 import random
-from typing import Collection
 from gxgp import TreeGP, Node
 import numpy as np
 
@@ -11,9 +9,9 @@ from joblib import Parallel, delayed
 class SymbolicRegressor:
     def __init__(self,
                  operators: dict[str, Operator],
-                 population_size=500,
+                 population_size=1000,
                  generations=1000,
-                 tournament_size=100,
+                 tournament_size=200,
                  randomness=0.3,
                  stopping_criteria=0.00001,
                  max_depth=7,
@@ -93,7 +91,7 @@ class SymbolicRegressor:
     def tournament_selection(self):
         """Performs over-selection to enhance diversity while controlling takeover time."""        
         # Define the split point for the two groups
-        """x_percentage = 0.32  # 32% for population size = 1000
+        x_percentage = 0.32  # 32% for population size = 1000
         split_index = int(self.population_size * x_percentage)  # 320
 
         # Define selection sizes
@@ -107,8 +105,7 @@ class SymbolicRegressor:
         selected = random.sample(top_individuals, elite_count) + random.sample(other_individuals, diverse_count)
 
         # Update population with selected individuals
-        self.population = selected"""
-        self.population = self.population[:self.tournament_size]
+        self.population = selected
 
     
     def evolve_population(self, X, y):
@@ -182,7 +179,7 @@ class SymbolicRegressor:
             
             self.tournament_selection()
         
-        return self.best_individual
+        return self.simplify(self.best_individual)
     
     def xover_swap_subtree(self, tree1: Node, tree2: Node) -> Node:
         """
@@ -495,6 +492,3 @@ def compute_mse(individual: Node, X, Y, max_samples=None):
         return mse
     except Exception as e:
         raise e
-
-   
-

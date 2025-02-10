@@ -24,24 +24,3 @@ def f7(x: np.ndarray) -> np.ndarray:
 
 def f8(x: np.ndarray) -> np.ndarray:
     return np.add(np.divide(-0.421288, np.abs(np.reciprocal(np.divide(np.divide(np.multiply(np.negative(np.divide(np.reciprocal(0.820353), 0.682236)), 0.820353), np.abs(np.reciprocal(np.divide(np.multiply(np.negative(np.divide(np.reciprocal(0.820353), 0.682236)), 0.820353), np.abs(np.reciprocal(np.power(0.189105, x[5]))))))), np.add(np.abs(0.189105), np.square(np.exp(x[5]))))))), np.square(np.exp(x[5])))
-    
-def get_f(i: int) -> callable:
-    match i:
-        case 1:
-            return f1
-        case 2: 
-            return f2
-        case 3:
-            return f3
-        case 4:
-            return f4
-        case 5:
-            return f5
-        case 6:
-            return f6
-        case 7:
-            return f7
-        case 8:
-            return f8
-        case _:
-            raise ValueError(f"Function {i} not found")

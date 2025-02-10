@@ -2,7 +2,7 @@ from gxgp.utils import Operator
 from symreg.symbolic_regressor import SymbolicRegressor
 import numpy as np
 
-n = 4
+n = 1
 numpy_operators = {
     "np.add": Operator(np.add, 2),
     "np.subtract": Operator(np.subtract, 2),
@@ -40,10 +40,9 @@ X = problem["x"]
 y = problem["y"]
 
 print(f"Solving problem {n}...")
-print(f"X shape: {X.shape}")
 
 sr = SymbolicRegressor(operators=numpy_operators)
 res = sr.fit(X, y)
 print()
 print("Training complete.")
-print(f"Besto solution: {sr.simplify(res)}")
+print(f"Best solution: {res}")
